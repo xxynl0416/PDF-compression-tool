@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc.*
+
+# Virtual env
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# Runtime data
+uploads/*
+!uploads/.gitkeep
+outputs/*
+!outputs/.gitkeep
+data/*
+!data/.gitkeep
+!data/.gitignore
+
+# Logs and temp
+*.log
+*.tmp
+*_stage1_temp.pdf
+*_stage2_temp.pdf
+*_temp_*.pdf
+*_gs_temp.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Test / benchmark outputs
+*_fast_auto.pdf
+*_fast_ghostscript.pdf
+*_balanced_auto.pdf
+*_balanced_python.pdf

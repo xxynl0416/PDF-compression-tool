@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF压缩工具 - 智能压缩</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #4A90D9; --primary-hover: #3A7BC8; --success: #2ECC71; --success-hover: #27AE60;
+            --danger: #E74C3C; --warning: #F39C12; --info: #3498DB; --background: #F8FAFC; --surface: #FFFFFF;
+            --border: #E2E8F0; --text-primary: #2C3E50; --text-secondary: #64748B; --text-disabled: #94A3B8;
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.1); --shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.15);
+        }
+        body { font-family: 'Microsoft YaHei', 'Segoe UI', 'PingFang SC', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: var(--text-primary); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; }
+        .container { max-width: 800px; width: 100%; }
+        .header { text-align: center; margin-bottom: 40px; color: white; }
+        .header h1 { font-size: 32px; margin-bottom: 8px; text-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+        .header p { font-size: 15px; opacity: 0.9; }
+        .card { background: var(--surface); border-radius: 20px; box-shadow: var(--shadow); padding: 28px; margin-bottom: 24px; transition: all 0.3s ease; }
+        .card:hover { box-shadow: var(--shadow-hover); }
+        .upload-area { border: 3px dashed var(--border); border-radius: 16px; padding: 60px 24px; text-align: center; cursor: pointer; transition: all 0.3s ease; position: relative; background: linear-gradient(135deg, rgba(74, 144, 217, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%); }
+        .upload-area:hover, .upload-area.drag-over { border-color: var(--primary); background: rgba(74, 144, 217, 0.08); transform: scale(1.01); }
+        .upload-area input[type="file"] { position: absolute; width: 100%; height: 100%; top: 0; left: 0; opacity: 0; cursor: pointer; }
+        .upload-icon { font-size: 64px; margin-bottom: 20px; }
+        .upload-text { color: var(--text-secondary); font-size: 16px; }
+        .upload-text strong { color: var(--primary); font-weight: 600; }
+        .upload-hint { color: var(--text-disabled); font-size: 13px; margin-top: 8px; }
+        .file-info { display: flex; align-items: center; gap: 16px; padding: 20px; background: linear-gradient(135deg, rgba(74, 144, 217, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%); border-radius: 14px; margin-top: 20px; border: 1px solid var(--border); }
+        .file-icon { font-size: 40px; }
+        .file-details { flex: 1; }
+        .file-name { font-weight: 600; margin-bottom: 6px; word-break: break-all; }
+        .file-meta { color: var(--text-secondary); font-size: 13px; }
+        .file-meta span { margin-right: 16px; }
+        .remove-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 10px; border-radius: 10px; transition: all 0.2s; font-size: 20px; }
+        .remove-btn:hover { background: rgba(231, 76, 60, 0.15); color: var(--danger); }
+        .preset-group { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .preset-btn { flex: 1; min-width: 100px; padding: 12px 16px; border: 2px solid var(--border); border-radius: 10px; background: var(--surface); cursor: pointer; transition: all 0.2s; text-align: center; }
+        .preset-btn:hover { border-color: var(--primary); background: rgba(74, 144, 217, 0.05); }
+        .preset-btn.active { border-color: var(--primary); background: var(--primary); color: white; }
+        .preset-btn .preset-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+        .preset-btn .preset-desc { font-size: 11px; opacity: 0.8; }
+        .settings-group { margin-bottom: 24px; }
+        .settings-label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .settings-label span:first-child { font-weight: 500; }
+        .settings-value { color: var(--primary); font-weight: 600; font-size: 16px; }
+        input[type="range"] { width: 100%; height: 8px; background: linear-gradient(90deg, var(--border) 0%, var(--primary) 100%); border-radius: 4px; outline: none; -webkit-appearance: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: white; border: 3px solid var(--primary); border-radius: 50%; cursor: pointer; }
+        .checkbox-group { display: flex; flex-direction: column; gap: 14px; margin-top: 20px; }
+        .checkbox-item { display: flex; align-items: center; gap: 12px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s; }
+        .checkbox-item:hover { background: var(--background); }
+        .checkbox-item input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--primary); }
+        .select-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+        .select-group label { display: block; font-weight: 500; margin-bottom: 10px; }
+        .select-group select { width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: white; font-size: 14px; color: var(--text-primary); outline: none; }
+        .select-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(74,144,217,0.12); }
+        .hint-text { margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+        .progress-container { margin: 24px 0; }
+        .progress-bar { height: 28px; background: var(--background); border-radius: 14px; overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1); }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary) 0%, var(--success) 100%); border-radius: 14px; transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; }
+        .progress-text { color: white; font-size: 13px; font-weight: 600; }
+        .progress-message { text-align: center; color: var(--text-secondary); font-size: 14px; margin-top: 12px; }
+        .result-container { text-align: center; padding: 24px; }
+        .result-icon { font-size: 56px; margin-bottom: 20px; }
+        .result-title { font-size: 22px; font-weight: 600; margin-bottom: 16px; }
+        .result-success { color: var(--success); }
+        .result-error { color: var(--danger); }
+        .result-stats { display: flex; justify-content: center; gap: 40px; margin: 24px 0; flex-wrap: wrap; }
+        .stat-item { text-align: center; padding: 16px; background: var(--background); border-radius: 12px; min-width: 120px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+        .stat-label { font-size: 13px; color: var(--text-secondary); margin-top: 6px; }
+        .output-files { background: var(--background); border-radius: 12px; padding: 16px; margin-top: 20px; text-align: left; }
+        .output-files-title { font-weight: 600; margin-bottom: 12px; color: var(--text-primary); }
+        .output-file { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid var(--border); }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 16px 32px; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: linear-gradient(135deg, var(--success) 0%, var(--success-hover) 100%); color: white; }
+        .btn-secondary { background: var(--surface); color: var(--text-primary); border: 2px solid var(--border); }
+        .btn-download { background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%); color: white; }
+        .btn-group { display: flex; gap: 14px; justify-content: center; margin-top: 24px; flex-wrap: wrap; }
+        .connection-status { position: fixed; top: 20px; right: 20px; padding: 10px 16px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 1000; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .connection-status.connected { background: var(--success); color: white; }
+        .connection-status.disconnected { background: var(--warning); color: white; }
+        .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: white; }
+        .hidden { display: none !important; }
+        @media (max-width: 768px) { body { padding: 20px 10px; } .select-row { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div id="connectionStatus" class="connection-status disconnected"><span class="connection-dot"></span><span id="statusText">连接中...</span></div>
+    <div class="container">
+        <div class="header"><h1>🚀 PDF 智能压缩工具</h1><p>实时进度 · 智能预设 · 自动分段</p></div>
+        <div class="card" id="uploadCard">
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept=".pdf">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text"><strong>点击或拖放</strong> PDF 文件到此处</div>
+                <div class="upload-hint">支持最大 500MB 的 PDF 文件</div>
+            </div>
+            <div class="file-info hidden" id="fileInfo">
+                <div class="file-icon">📑</div>
+                <div class="file-details"><div class="file-name" id="fileName">-</div><div class="file-meta" id="fileMeta">-</div></div>
+                <button class="remove-btn" id="removeBtn" title="移除文件">✕</button>
+            </div>
+        </div>
+        <div class="card" id="settingsCard">
+            <div class="settings-group">
+                <label style="font-weight: 600; margin-bottom: 12px; display: block;">快速预设</label>
+                <div class="preset-group">
+                    <div class="preset-btn" data-preset="aggressive"><div class="preset-name">🔥 激进压缩</div><div class="preset-desc">最小体积 · 适合网络传输</div></div>
+                    <div class="preset-btn active" data-preset="balanced"><div class="preset-name">⚖️ 平衡模式</div><div class="preset-desc">推荐 · 质量与体积平衡</div></div>
+                    <div class="preset-btn" data-preset="conservative"><div class="preset-name">💎 保守压缩</div><div class="preset-desc">最高质量 · 适合打印</div></div>
+                </div>
+            </div>
+            <div class="settings-group">
+                <div class="settings-label"><span>📏 目标大小</span><span class="settings-value" id="targetSizeValue">200 MB</span></div>
+                <input type="range" id="targetSize" min="10" max="500" value="200" step="10">
+            </div>
+            <div class="settings-group">
+                <div class="settings-label"><span>🎨 图像质量</span><span class="settings-value" id="qualityValue">70%</span></div>
+                <input type="range" id="quality" min="30" max="100" value="70" step="5">
+            </div>
+            <div class="settings-group">
+                <div class="select-row">
+                    <div class="select-group">
+                        <label for="compressionMode">⚙️ 压缩模式</label>
+                        <select id="compressionMode">
+                            <option value="fast">快速模式</option>
+                            <option value="balanced">平衡模式</option>
+                            <option value="high_quality">高质量模式</option>
+                        </select>
+                        <div class="hint-text">快速更省时，高质量更注重输出效果</div>
+                    </div>
+                    <div class="select-group">
+                        <label for="backend">🧠 压缩后端</label>
+                        <select id="backend">
+                            <option value="auto">自动</option>
+                            <option value="python">Python</option>
+                            <option value="ghostscript">Ghostscript</option>
+                        </select>
+                        <div class="hint-text">自动模式会优先尝试更快的后端</div>
+                    </div>
+                </div>
+            </div>
+            <div class="checkbox-group">
+                <label class="checkbox-item"><input type="checkbox" id="forceCompress" checked><span>🔧 强制压缩（即使文件已小于目标大小）</span></label>
+                <label class="checkbox-item"><input type="checkbox" id="autoSplit" checked><span>✂️ 无法压缩到目标时自动分段</span></label>
+            </div>
+            <div class="btn-group"><button class="btn btn-primary" id="compressBtn" disabled><span>🚀 开始压缩</span></button></div>
+        </div>
+        <div class="card hidden" id="progressCard">
+            <h3 style="margin-bottom: 16px; text-align: center;">⏳ 压缩进度</h3>
+            <div class="progress-container"><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width: 0%"><span class="progress-text" id="progressPercent">0%</span></div></div><div class="progress-message" id="progressMessage">准备中...</div></div>
+        </div>
+        <div class="card hidden" id="resultCard">
+            <div class="result-container">
+                <div class="result-icon" id="resultIcon">✓</div>
+                <div class="result-title" id="resultTitle">压缩完成!</div>
+                <div class="result-stats" id="resultStats">
+                    <div class="stat-item"><div class="stat-value" id="originalSize">-</div><div class="stat-label">原始大小</div></div>
+                    <div class="stat-item"><div class="stat-value" id="finalSize">-</div><div class="stat-label">压缩后</div></div>
+                    <div class="stat-item"><div class="stat-value" id="compressionRatio">-</div><div class="stat-label">压缩率</div></div>
+                </div>
+                <div style="margin-top:12px;color:var(--text-secondary);font-size:13px;" id="backendInfo"></div>
+                <div class="output-files hidden" id="outputFiles"><div class="output-files-title">📁 输出文件</div><div id="outputFilesList"></div></div>
+                <div class="btn-group"><button class="btn btn-download" id="downloadBtn"><span>⬇️ 下载文件</span></button><button class="btn btn-secondary" id="newTaskBtn"><span>🔄 处理新文件</span></button></div>
+            </div>
+        </div>
+    </div>
+    <script src="/static/js/enhanced.js"></script>
+    <script>
+        function formatSize(sizeMb) {
+            if (!sizeMb && sizeMb !== 0) return '-';
+            if (sizeMb >= 1024) return (sizeMb / 1024).toFixed(2) + ' GB';
+            if (sizeMb >= 1) return sizeMb.toFixed(2) + ' MB';
+            return (sizeMb * 1024).toFixed(2) + ' KB';
+        }
+
+        let currentTaskId = null;
+        let statusCheckInterval = null;
+        let uploadedDefaults = { target_size: 200, quality: 70, compression_mode: 'fast', backend: 'auto' };
+
+        const fileInput = document.getElementById('fileInput');
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileMeta = document.getElementById('fileMeta');
+        const removeBtn = document.getElementById('removeBtn');
+        const targetSizeInput = document.getElementById('targetSize');
+        const targetSizeValue = document.getElementById('targetSizeValue');
+        const qualityInput = document.getElementById('quality');
+        const qualityValue = document.getElementById('qualityValue');
+        const compressionModeInput = document.getElementById('compressionMode');
+        const backendInput = document.getElementById('backend');
+        const compressBtn = document.getElementById('compressBtn');
+        const settingsCard = document.getElementById('settingsCard');
+        const progressCard = document.getElementById('progressCard');
+        const progressFill = document.getElementById('progressFill');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressMessage = document.getElementById('progressMessage');
+        const resultCard = document.getElementById('resultCard');
+        const resultIcon = document.getElementById('resultIcon');
+        const resultTitle = document.getElementById('resultTitle');
+        const resultStats = document.getElementById('resultStats');
+        const originalSize = document.getElementById('originalSize');
+        const finalSize = document.getElementById('finalSize');
+        const compressionRatio = document.getElementById('compressionRatio');
+        const outputFiles = document.getElementById('outputFiles');
+        const outputFilesList = document.getElementById('outputFilesList');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const newTaskBtn = document.getElementById('newTaskBtn');
+        const backendInfo = document.getElementById('backendInfo');
+
+        function applyDefaults(defaults) {
+            if (!defaults) return;
+            uploadedDefaults = defaults;
+            targetSizeInput.value = defaults.target_size ?? 200;
+            targetSizeValue.textContent = `${targetSizeInput.value} MB`;
+            qualityInput.value = defaults.quality ?? 70;
+            qualityValue.textContent = `${qualityInput.value}%`;
+            compressionModeInput.value = defaults.compression_mode || 'fast';
+            backendInput.value = defaults.backend || 'auto';
+        }
+
+        targetSizeInput.addEventListener('input', () => targetSizeValue.textContent = `${targetSizeInput.value} MB`);
+        qualityInput.addEventListener('input', () => qualityValue.textContent = `${qualityInput.value}%`);
+
+        fileInput.addEventListener('change', handleFileSelect);
+        removeBtn.addEventListener('click', removeFile);
+        compressBtn.addEventListener('click', startCompress);
+        downloadBtn.addEventListener('click', downloadFile);
+        newTaskBtn.addEventListener('click', resetApp);
+
+        uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+        uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault(); uploadArea.classList.remove('drag-over');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) { fileInput.files = files; handleFileSelect(); }
+        });
+
+        async function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (!file) return;
+            if (!file.name.toLowerCase().endsWith('.pdf')) { alert('请选择 PDF 文件'); return; }
+            fileInfo.classList.remove('hidden');
+            fileName.textContent = file.name;
+            fileMeta.textContent = '上传中...';
+            compressBtn.disabled = true;
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const response = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (response.ok) {
+                    currentTaskId = data.task_id;
+                    if (data.defaults) applyDefaults(data.defaults);
+                    fileMeta.innerHTML = `<span>${data.file_info.size_formatted}</span><span>${data.file_info.page_count} 页</span>`;
+                    compressBtn.disabled = false;
+                } else {
+                    alert(data.error || '上传失败');
+                    removeFile();
+                }
+            } catch (error) {
+                alert('上传失败: ' + error.message);
+                removeFile();
+            }
+        }
+
+        function removeFile() {
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            compressBtn.disabled = true;
+            currentTaskId = null;
+        }
+
+        async function startCompress() {
+            if (!currentTaskId) return;
+            settingsCard.classList.add('hidden');
+            progressCard.classList.remove('hidden');
+            resultCard.classList.add('hidden');
+            compressBtn.disabled = true;
+            progressFill.style.width = '0%';
+            progressPercent.textContent = '0%';
+            progressMessage.textContent = '开始压缩...';
+            try {
+                const payload = {
+                    task_id: currentTaskId,
+                    target_size: parseInt(targetSizeInput.value),
+                    quality: parseInt(qualityInput.value),
+                    force_compress: document.getElementById('forceCompress').checked,
+                    compression_mode: compressionModeInput.value,
+                    backend: backendInput.value
+                };
+                const response = await fetch('/api/compress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    statusCheckInterval = setInterval(checkStatus, 500);
+                } else {
+                    showError(data.error || '启动压缩失败');
+                }
+            } catch (error) {
+                showError('启动压缩失败: ' + error.message);
+            }
+        }
+
+        async function checkStatus() {
+            if (!currentTaskId) return;
+            try {
+                const response = await fetch(`/api/status/${currentTaskId}`);
+                const data = await response.json();
+                progressFill.style.width = `${data.progress}%`;
+                progressPercent.textContent = `${data.progress}%`;
+                progressMessage.textContent = data.message;
+                if (data.status === 'completed') {
+                    clearInterval(statusCheckInterval);
+                    showResult(data.result);
+                } else if (data.status === 'failed') {
+                    clearInterval(statusCheckInterval);
+                    showError(data.result?.message || '压缩失败');
+                }
+            } catch (error) {
+                console.error('状态检查失败:', error);
+            }
+        }
+
+        function showResult(result) {
+            progressCard.classList.add('hidden');
+            resultCard.classList.remove('hidden');
+            if (!result) { showError('结果数据为空'); return; }
+            resultIcon.textContent = '✓';
+            resultIcon.className = 'result-icon';
+            resultTitle.textContent = result.was_split ? '分段完成!' : '压缩完成!';
+            resultTitle.className = 'result-title result-success';
+            originalSize.textContent = result.original_size_formatted || formatSize(result.original_size_mb);
+            finalSize.textContent = result.final_size_formatted || formatSize(result.final_size_mb);
+            compressionRatio.textContent = `${result.compression_ratio || 0}%`;
+            backendInfo.textContent = `模式：${result.compression_mode || compressionModeInput.value} ｜ 后端：${result.backend || backendInput.value}`;
+            resultStats.classList.remove('hidden');
+            if (result.was_split && result.output_files && result.output_files.length > 1) {
+                outputFilesList.innerHTML = result.output_files.map(f => `<div class="output-file">📄 ${f}</div>`).join('');
+                outputFiles.classList.remove('hidden');
+            } else {
+                outputFiles.classList.add('hidden');
+            }
+        }
+
+        function showError(message) {
+            progressCard.classList.add('hidden');
+            resultCard.classList.remove('hidden');
+            resultIcon.textContent = '✕';
+            resultIcon.className = 'result-icon result-error';
+            resultTitle.textContent = message || '处理失败';
+            resultTitle.className = 'result-title result-error';
+            backendInfo.textContent = '';
+            resultStats.classList.add('hidden');
+            outputFiles.classList.add('hidden');
+        }
+
+        function downloadFile() {
+            if (!currentTaskId) return;
+            window.location.href = `/api/download/${currentTaskId}`;
+        }
+
+        async function resetApp() {
+            if (currentTaskId) {
+                try { await fetch(`/api/cleanup/${currentTaskId}`, { method: 'DELETE' }); } catch (error) { console.error('清理失败:', error); }
+            }
+            currentTaskId = null;
+            clearInterval(statusCheckInterval);
+            fileInput.value = '';
+            fileInfo.classList.add('hidden');
+            settingsCard.classList.remove('hidden');
+            progressCard.classList.add('hidden');
+            resultCard.classList.add('hidden');
+            compressBtn.disabled = true;
+            progressFill.style.width = '0%';
+            progressPercent.textContent = '0%';
+            progressMessage.textContent = '准备中...';
+            applyDefaults(uploadedDefaults);
+        }
+    </script>
+</body>
+</html>

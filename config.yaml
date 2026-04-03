@@ -1,0 +1,27 @@
+# PDF压缩工具配置文件
+
+# 目标大小设置
+compression:
+  target_size_mb: 200
+  default_quality: 85
+  min_quality: 50
+  max_dpi: 300
+  mode: "fast"           # fast | balanced | high_quality
+  backend: "auto"        # auto | python | ghostscript
+  ghostscript_path: ""   # 可选：Ghostscript 可执行文件完整路径
+
+# 分段设置
+split:
+  enabled: true
+  max_size_mb: 200
+
+# 输出设置
+output:
+  suffix: "_compressed"
+  segment_suffix: "_part"
+  keep_original: true
+
+# 日志设置
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
