@@ -1,161 +1,121 @@
 # PDFTool
 
+[简体中文](./README.zh-CN.md) | English
+
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![Backend](https://img.shields.io/badge/Backend-PyMuPDF%20%7C%20Ghostscript-orange)
-![Interface](https://img.shields.io/badge/Interface-Web%20%7C%20GUI%20%7C%20CLI-purple)
 
-一个支持 **Web / GUI / CLI** 的 PDF 压缩工具，提供多种压缩模式与后端选择，适合日常办公、扫描件压缩与团队内部使用。
+PDFTool is an open-source PDF compression toolkit with **Web**, **GUI**, and **CLI** entry points.  
+It supports multiple compression modes, optional Ghostscript acceleration, automatic splitting for oversized outputs, and task persistence for web workflows.
 
-## 截图 / 说明
+## Feature Matrix
 
-- Web：适合团队共享使用
-- GUI：适合桌面端单机使用
-- CLI：适合脚本化和批处理
+| Capability | Web | GUI | CLI |
+|---|---|---|---|
+| Upload/compress/download | Yes | Yes | Yes |
+| Compression modes (`fast` / `balanced` / `high_quality`) | Yes | Yes | Yes |
+| Backend selection (`auto` / `python` / `ghostscript`) | Yes | Yes | Yes |
+| Auto split oversized results | Yes | Yes | Yes |
+| Real-time progress | Yes (WebSocket + polling fallback) | Yes | Yes |
+| Task persistence | Yes (SQLite) | No | No |
 
-## 特性
+## Requirements
 
-- 支持 **Web / GUI / CLI** 三种使用方式
-- 支持 **fast / balanced / high_quality** 压缩模式
-- 支持 **auto / python / ghostscript** 压缩后端
-- 文本型 PDF 快速路径优化
-- 图像型 PDF 智能压缩
-- 支持大文件自动分段
-- SQLite 持久化任务记录
-- WebSocket 实时进度推送
-- 提供 benchmark 性能对比脚本
+- Python 3.10+
+- Windows / Linux / macOS
+- Optional: Ghostscript (recommended for faster image-heavy PDF compression)
 
-## 快速开始
-
-### 安装依赖
+## Install
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 启动 Web 服务
+## Quick Start
+
+### 1. Run Web server
 
 ```bash
 python app.py
 ```
 
-打开浏览器访问：
+Then open `http://localhost:5000`.
 
-```text
-http://localhost:5000
-```
-
-### 启动 GUI
+### 2. Run GUI
 
 ```bash
 python main.py
 ```
 
-### CLI 压缩
+### 3. Run CLI
 
 ```bash
 python main.py --cli input.pdf
 python main.py --cli input.pdf -o output.pdf -t 200
 ```
 
-## 环境要求
+## Configuration
 
-- Python 3.10+
-- Windows / Linux / macOS
-- 可选：Ghostscript（推荐，用于更快压缩图像型 PDF）
+Default config file: `config.yaml`
 
-## Ghostscript（可选）
+```yaml
+compression:
+  target_size_mb: 200
+  default_quality: 85
+  mode: "fast"           # fast | balanced | high_quality
+  backend: "auto"        # auto | python | ghostscript
+  ghostscript_path: ""   # optional absolute path
+```
 
-如需启用 Ghostscript，请先安装 Ghostscript，并在 `config.yaml` 中配置路径：
+## Runtime Environment Variables (Web)
+
+- `PDFTOOL_DEBUG`: enable Flask debug mode (`false` by default)
+- `PDFTOOL_HOST`: bind host (`0.0.0.0` by default)
+- `PDFTOOL_PORT`: bind port (`5000` by default)
+
+Example:
+
+```bash
+PDFTOOL_DEBUG=true PDFTOOL_HOST=127.0.0.1 PDFTOOL_PORT=8080 python app.py
+```
+
+## Optional Ghostscript Setup
+
+If Ghostscript is installed, you can explicitly set its executable path in `config.yaml`:
 
 ```yaml
 compression:
   ghostscript_path: "C:\\Program Files\\gs\\gs10.03.1\\bin\\gswin64c.exe"
 ```
 
-## 配置
-
-默认配置文件：`config.yaml`
-
-推荐默认值：
-
-```yaml
-compression:
-  target_size_mb: 200
-  default_quality: 85
-  mode: "balanced"
-  backend: "auto"
-```
-
-## Benchmark
-
-对同一个 PDF 做性能对比：
+## Test
 
 ```bash
-python benchmark.py input.pdf
-python benchmark.py input.pdf --target 200 --quality 85
+python tests/test_basic.py
 ```
 
-默认会对比：
+## FAQ
 
-- fast + auto
-- fast + ghostscript
-- balanced + auto
-- balanced + python
+### Why does `auto` backend still use Python?
+`auto` tries Ghostscript first only when it is available and considered beneficial for current content. Otherwise it falls back to Python rendering.
 
-## 推荐策略
+### Why can output still be larger than target?
+Some PDFs (mixed vector/text content, embedded fonts, or high-complexity pages) have compression limits. The splitter can generate multiple files when a single file cannot hit the target safely.
 
-### 优先速度
-- 模式：`fast`
-- 后端：`ghostscript`
+## Known Limits
 
-### 平衡效果与稳定性
-- 模式：`balanced`
-- 后端：`auto`
+- Extremely malformed/encrypted PDFs may fail validation or compression.
+- Different Ghostscript versions may produce slightly different size/quality trade-offs.
 
-### 更看重质量
-- 模式：`high_quality`
-- 后端：`auto`
+## Security
 
-## 项目结构
+Please report vulnerabilities via `SECURITY.md`.
 
-```text
-PDFTool/
-├── app.py
-├── main.py
-├── benchmark.py
-├── config.yaml
-├── requirements.txt
-├── src/
-│   ├── core/
-│   ├── database/
-│   ├── gui/
-│   ├── utils/
-│   └── websocket_manager.py
-├── static/
-├── templates/
-└── tests/
-```
+## Changelog
 
-## 测试
-
-```bash
-python tests\test_basic.py
-```
-
-## 开源说明
-
-建议不要提交以下运行时文件：
-
-- `uploads/`
-- `outputs/`
-- `data/tasks.db`
-- `__pycache__/`
-- `.idea/`
-
-项目已包含 `.gitignore`。
+See `CHANGELOG.md`.
 
 ## License
 
-MIT
+MIT License.

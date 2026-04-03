@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """测试脚本 - 验证PDF压缩工具核心功能"""
 import sys
+import tempfile
 from pathlib import Path
 
 project_root = Path(__file__).parent.parent
@@ -99,20 +100,20 @@ def test_compressor_init():
 def test_task_db_schema():
     print("\n7. 测试任务数据库扩展字段...")
     from src.database.task_db import TaskDatabase
-    test_db_path = project_root / 'data' / 'test_tasks.db'
-    if test_db_path.exists():
-        test_db_path.unlink()
-    db = TaskDatabase(str(test_db_path))
-    ok = db.create_task('t1', 'a.pdf', 'a.pdf', {'size_mb': 1, 'page_count': 1}, compression_mode='balanced', backend='python')
-    assert ok
-    task = db.get_task('t1')
-    assert task['compression_mode'] == 'balanced'
-    assert task['backend'] == 'python'
+    with tempfile.TemporaryDirectory() as temp_dir:
+        test_db_path = Path(temp_dir) / 'test_tasks.db'
+        db = TaskDatabase(str(test_db_path))
+        ok = db.create_task(
+            't1', 'a.pdf', 'a.pdf',
+            {'size_mb': 1, 'page_count': 1},
+            compression_mode='balanced',
+            backend='python'
+        )
+        assert ok
+        task = db.get_task('t1')
+        assert task['compression_mode'] == 'balanced'
+        assert task['backend'] == 'python'
     print("   [OK] 数据库字段测试通过")
-    try:
-        test_db_path.unlink()
-    except Exception:
-        pass
     return True
 
 

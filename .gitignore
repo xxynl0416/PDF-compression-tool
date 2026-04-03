@@ -26,6 +26,10 @@ data/*
 # Logs and temp
 *.log
 *.tmp
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 *_stage1_temp.pdf
 *_stage2_temp.pdf
 *_temp_*.pdf

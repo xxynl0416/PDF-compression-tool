@@ -1,97 +1,41 @@
-# 更新日志
+# Changelog
 
-## v2.1.0 - 性能优化版 (2026-04-03)
+All notable changes to this project are documented in this file.
 
-### 🚀 重大性能提升
+## v0.1.0 - Open-source Reboot (2026-04-03)
 
-**3 大核心优化，速度提升 5-15 倍！**
+### English
+- Public open-source baseline for GitHub launch.
+- Added bilingual docs (`README.md` + `README.zh-CN.md`).
+- Added community files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue/PR templates.
+- Added GitHub Actions CI for Python 3.10/3.11 on Linux.
+- Web runtime now supports env vars: `PDFTOOL_DEBUG`, `PDFTOOL_HOST`, `PDFTOOL_PORT`.
+- `POST /api/cleanup-old` now safely handles empty request body.
+- Database schema test now uses a temporary directory to avoid repository side effects.
 
-#### 1. 多线程并行处理
-- ✅ 页面级并行渲染
-- ✅ 自动检测 CPU 核心数
-- ✅ 线程安全进度更新
-- **加速比**: 3-6 倍
+### 中文
+- 作为 GitHub 开源首发版本建立稳定基线。
+- 新增双语文档（`README.md` + `README.zh-CN.md`）。
+- 新增开源协作文件：`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md`、`SECURITY.md`、Issue/PR 模板。
+- 新增 Linux + Python 3.10/3.11 的 GitHub Actions CI。
+- Web 运行新增环境变量：`PDFTOOL_DEBUG`、`PDFTOOL_HOST`、`PDFTOOL_PORT`。
+- `POST /api/cleanup-old` 改为可安全处理空请求体。
+- 数据库相关测试改为临时目录数据库，避免仓库目录副作用。
 
-#### 2. 智能参数估算
-- ✅ 基于 PDF 内容分析
-- ✅ 一次性估算最优参数
-- ✅ 减少迭代次数（6→0-1）
-- **加速比**: 2-3 倍
+## v2.1.0 - Performance Optimization (2026-04-03)
 
-#### 3. 自适应 DPI 策略
-- ✅ 纯文本页面: 72 DPI
-- ✅ 混合内容: 96 DPI
-- ✅ 图像页面: 150 DPI
-- **加速比**: 1.5-2.5 倍
+- Added multithreaded page rendering strategy.
+- Added smarter initial compression parameter estimation.
+- Added adaptive DPI behavior by page content.
 
-### 📝 技术细节
+## v2.0.0 - Feature Enhancement (2026-04-03)
 
-**修改文件**:
-- `src/core/compressor.py` - 核心优化
+- Added SQLite task persistence.
+- Added WebSocket real-time progress updates.
+- Upgraded web UI interaction and preset controls.
+- Added compression mode/backend options.
+- Added rate limiting and stronger upload validation.
 
-**新增方法**:
-- `_render_multithreaded()` - 多线程渲染
-- `_smart_estimate_initial_params()` - 智能估算
-- `_adaptive_dpi_for_page()` - 自适应 DPI
+## v1.0.0 - Initial Version
 
-**新增参数**:
-- `use_multithreading` - 控制多线程（默认开启）
-- `MAX_WORKERS` - 线程数（None=自动）
-
-### ⚡ 使用方式
-
-```python
-# 默认启用所有优化
-from src.core.compressor import compress_pdf
-result = compress_pdf("input.pdf", target_size_mb=200)
-
-# 禁用多线程（如需调试）
-result = compress_pdf("input.pdf", use_multithreading=False)
-```
-
-### 📊 性能对比
-
-| 场景 | v2.0.0 | v2.1.0 | 加速比 |
-|------|--------|--------|--------|
-| 100 页 PDF | 200 秒 | 15 秒 | **13.3x** |
-| 50 页 PDF | 100 秒 | 10 秒 | **10x** |
-| 200 页 PDF | 400 秒 | 30 秒 | **13.3x** |
-
----
-
-## v2.0.0 - 功能增强版 (2026-04-03)
-
-### ✨ 新功能
-
-1. **持久化任务存储**
-   - SQLite 数据库
-   - 任务历史查询
-   - 自动过期清理
-
-2. **实时进度推送**
-   - WebSocket 实时更新
-   - 连接状态指示器
-   - HTTP 轮询后备
-
-3. **前端 UI 升级**
-   - 渐变紫色主题
-   - 响应式设计
-   - 动画效果
-
-4. **压缩预设**
-   - 🔥 激进压缩
-   - ⚖️ 平衡模式
-   - 💎 保守压缩
-
-5. **安全性增强**
-   - 速率限制
-   - 文件验证
-
----
-
-## v1.0.0 - 初始版本
-
-- PDF 压缩核心功能
-- Web 界面
-- 命令行模式
-- GUI 模式
+- Initial PDF compression capability with Web/GUI/CLI entry points.

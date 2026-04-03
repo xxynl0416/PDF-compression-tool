@@ -42,6 +42,14 @@ def allowed_file(filename: str) -> bool:
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    """Parse boolean environment variables with sane defaults."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def run_compression(task_id: str, input_path: str, target_size: int, quality: int,
                     force_compress: bool = True, compression_mode: str = 'fast', backend: str = 'auto'):
     try:
@@ -292,7 +300,8 @@ def get_stats():
 
 @app.route('/api/cleanup-old', methods=['POST'])
 def cleanup_old_tasks():
-    hours = request.json.get('hours', 24)
+    payload = request.get_json(silent=True) or {}
+    hours = payload.get('hours', 24)
     deleted = db.cleanup_old_tasks(hours)
     return jsonify({'message': f'已清理 {deleted} 个过期任务', 'deleted': deleted})
 
@@ -303,10 +312,18 @@ def serve_static(filename):
 
 
 if __name__ == '__main__':
+    host = os.getenv('PDFTOOL_HOST', '0.0.0.0')
+    try:
+        port = int(os.getenv('PDFTOOL_PORT', '5000'))
+    except ValueError:
+        port = 5000
+    debug = env_bool('PDFTOOL_DEBUG', False)
+
     print("=" * 50)
     print("PDF压缩工具 Web服务")
     print("=" * 50)
-    print("访问地址: http://localhost:5000")
+    print(f"访问地址: http://{host}:{port}")
     print(f"默认模式: {config.compression_mode}, 默认后端: {config.compression_backend}")
+    print(f"DEBUG: {debug}")
     print("=" * 50)
-    socketio_app.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio_app.run(app, host=host, port=port, debug=debug)
