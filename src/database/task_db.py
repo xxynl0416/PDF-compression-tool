@@ -4,10 +4,13 @@
 """
 import sqlite3
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
+
+logger = logging.getLogger("task_db")
 
 
 class TaskDatabase:
@@ -51,14 +54,19 @@ class TaskDatabase:
 
             conn.execute('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at)')
-            conn.commit()
 
     @contextmanager
     def _get_connection(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         try:
             yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
@@ -79,10 +87,9 @@ class TaskDatabase:
                     target_size, quality, force_compress, compression_mode, backend,
                     datetime.now().isoformat()
                 ))
-                conn.commit()
                 return True
         except Exception as e:
-            print(f"创建任务失败: {e}")
+            logger.error(f"创建任务失败: {e}")
             return False
 
     def update_task_status(self, task_id: str, status: str, progress: int = None, message: str = None) -> bool:
@@ -104,20 +111,31 @@ class TaskDatabase:
                     params.append(datetime.now().isoformat())
                 params.append(task_id)
                 conn.execute(f"UPDATE tasks SET {', '.join(updates)} WHERE id = ?", params)
-                conn.commit()
                 return True
         except Exception as e:
-            print(f"更新任务状态失败: {e}")
+            logger.error(f"更新任务状态失败: {e}")
+            return False
+
+    def update_task_params(self, task_id: str, target_size: float, quality: int,
+                           force_compress: bool, compression_mode: str, backend: str) -> bool:
+        try:
+            with self._get_connection() as conn:
+                conn.execute('''
+                    UPDATE tasks SET target_size = ?, quality = ?, force_compress = ?, compression_mode = ?, backend = ?
+                    WHERE id = ?
+                ''', (target_size, quality, force_compress, compression_mode, backend, task_id))
+                return True
+        except Exception as e:
+            logger.error(f"更新任务参数失败: {e}")
             return False
 
     def update_task_result(self, task_id: str, result: Dict[str, Any]) -> bool:
         try:
             with self._get_connection() as conn:
                 conn.execute('UPDATE tasks SET result = ? WHERE id = ?', (json.dumps(result, ensure_ascii=False), task_id))
-                conn.commit()
                 return True
         except Exception as e:
-            print(f"更新任务结果失败: {e}")
+            logger.error(f"更新任务结果失败: {e}")
             return False
 
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -129,7 +147,7 @@ class TaskDatabase:
                     return self._row_to_dict(row)
                 return None
         except Exception as e:
-            print(f"获取任务失败: {e}")
+            logger.error(f"获取任务失败: {e}")
             return None
 
     def get_all_tasks(self, limit: int = 50, offset: int = 0, status_filter: str = None) -> List[Dict[str, Any]]:
@@ -145,27 +163,25 @@ class TaskDatabase:
                 cursor = conn.execute(query, params)
                 return [self._row_to_dict(row) for row in cursor.fetchall()]
         except Exception as e:
-            print(f"获取任务列表失败: {e}")
+            logger.error(f"获取任务列表失败: {e}")
             return []
 
     def delete_task(self, task_id: str) -> bool:
         try:
             with self._get_connection() as conn:
                 conn.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
-                conn.commit()
                 return True
         except Exception as e:
-            print(f"删除任务失败: {e}")
+            logger.error(f"删除任务失败: {e}")
             return False
 
     def cleanup_old_tasks(self, hours: int = 24) -> int:
         try:
             with self._get_connection() as conn:
                 cursor = conn.execute("DELETE FROM tasks WHERE created_at < datetime('now', ?)", (f'-{hours} hours',))
-                conn.commit()
                 return cursor.rowcount
         except Exception as e:
-            print(f"清理过期任务失败: {e}")
+            logger.error(f"清理过期任务失败: {e}")
             return 0
 
     def get_task_stats(self) -> Dict[str, Any]:
@@ -173,16 +189,16 @@ class TaskDatabase:
             with self._get_connection() as conn:
                 cursor = conn.execute('''
                     SELECT COUNT(*) as total,
-                           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-                           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                           SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing,
-                           SUM(CASE WHEN status = 'uploaded' THEN 1 ELSE 0 END) as uploaded
+                           COALESCE(SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END), 0) as completed,
+                           COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed,
+                           COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0) as processing,
+                           COALESCE(SUM(CASE WHEN status = 'uploaded' THEN 1 ELSE 0 END), 0) as uploaded
                     FROM tasks
                 ''')
                 row = cursor.fetchone()
                 return {'total': row['total'], 'completed': row['completed'], 'failed': row['failed'], 'processing': row['processing'], 'uploaded': row['uploaded']}
         except Exception as e:
-            print(f"获取统计信息失败: {e}")
+            logger.error(f"获取统计信息失败: {e}")
             return {}
 
     def _row_to_dict(self, row) -> Dict[str, Any]:

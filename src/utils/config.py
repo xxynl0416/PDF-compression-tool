@@ -1,4 +1,5 @@
 """配置管理模块"""
+import copy
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -38,7 +39,7 @@ class Config:
     def __new__(cls) -> 'Config':
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._config = DEFAULT_CONFIG.copy()
+            cls._instance._config = copy.deepcopy(DEFAULT_CONFIG)
         return cls._instance
 
     def load_from_file(self, config_path: str) -> bool:

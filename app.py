@@ -2,10 +2,13 @@
 """
 PDF压缩工具 - Web服务
 """
+import io
 import os
 import sys
 import uuid
+import zipfile
 import threading
+import traceback
 from pathlib import Path
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from werkzeug.utils import secure_filename
@@ -96,7 +99,6 @@ def run_compression(task_id: str, input_path: str, target_size: int, quality: in
             emit_task_failed(task_id, result.message)
 
     except Exception as e:
-        import traceback
         traceback.print_exc()
         error_msg = str(e)
         db.update_task_status(task_id, 'failed', progress=0, message=error_msg)
@@ -110,6 +112,11 @@ def run_compression(task_id: str, input_path: str, target_size: int, quality: in
             'output_files': []
         })
         emit_task_failed(task_id, error_msg)
+        if os.path.exists(input_path):
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
 
 
 @app.route('/')
@@ -171,6 +178,7 @@ def upload_file():
 
 
 @app.route('/api/compress', methods=['POST'])
+@limiter.limit("30 per hour")
 def start_compress():
     data = request.json
     task_id = data.get('task_id')
@@ -186,12 +194,7 @@ def start_compress():
     compression_mode = data.get('compression_mode', config.compression_mode)
     backend = data.get('backend', config.compression_backend)
 
-    with db._get_connection() as conn:
-        conn.execute('''
-            UPDATE tasks SET target_size = ?, quality = ?, force_compress = ?, compression_mode = ?, backend = ?
-            WHERE id = ?
-        ''', (target_size, quality, force_compress, compression_mode, backend, task_id))
-        conn.commit()
+    db.update_task_params(task_id, target_size, quality, force_compress, compression_mode, backend)
 
     thread = threading.Thread(
         target=run_compression,
@@ -242,10 +245,10 @@ def download_file(task_id):
         return jsonify({'error': '没有输出文件'}), 400
     if len(output_files) == 1:
         file_path = output_files[0]
+        if not os.path.exists(file_path):
+            return jsonify({'error': '输出文件不存在'}), 404
         return send_file(file_path, as_attachment=True, download_name=Path(file_path).name)
 
-    import zipfile
-    import io
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for file_path in output_files:

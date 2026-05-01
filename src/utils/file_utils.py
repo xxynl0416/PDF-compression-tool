@@ -1,5 +1,8 @@
 """文件操作工具模块"""
 import os
+import shutil
+import sys
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -92,16 +95,10 @@ def check_disk_space(file_path: str, required_mb: float) -> bool:
         else:
             directory = path
 
-        # 获取磁盘使用情况
-        total, used, free = os.statvfs(directory).f_blocks, 0, 0
-        # Windows 系统使用不同方式
-        import shutil
         total, used, free = shutil.disk_usage(directory)
-
         free_mb = free / (1024 * 1024)
         return free_mb >= required_mb
     except Exception:
-        # 无法检查时假设空间足够
         return True
 
 
@@ -138,17 +135,7 @@ def format_size(size_mb: float) -> str:
 
 
 def open_file_with_default_app(file_path: str) -> bool:
-    """使用系统默认应用程序打开文件
-
-    Args:
-        file_path: 文件路径
-
-    Returns:
-        是否成功打开
-    """
-    import sys
-    import subprocess
-
+    """使用系统默认应用程序打开文件"""
     if not os.path.exists(file_path):
         return False
 
@@ -171,17 +158,7 @@ def open_file_with_default_app(file_path: str) -> bool:
 
 
 def open_directory(directory_path: str) -> bool:
-    """打开目录（在文件管理器中显示）
-
-    Args:
-        directory_path: 目录路径
-
-    Returns:
-        是否成功打开
-    """
-    import sys
-    import subprocess
-
+    """打开目录（在文件管理器中显示）"""
     path = Path(directory_path)
     if not path.exists():
         return False
@@ -205,17 +182,7 @@ def open_directory(directory_path: str) -> bool:
 
 
 def open_file_in_explorer(file_path: str) -> bool:
-    """在文件管理器中定位并选中文件
-
-    Args:
-        file_path: 文件路径
-
-    Returns:
-        是否成功打开
-    """
-    import sys
-    import subprocess
-
+    """在文件管理器中定位并选中文件"""
     if not os.path.exists(file_path):
         return False
 

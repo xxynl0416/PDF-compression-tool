@@ -23,7 +23,7 @@ from .widgets import FileDropEdit, FileInfoWidget, ProgressWidget, SettingsWidge
 from .styles import COLORS, get_app_style, BUTTON_PRIMARY, BUTTON_SECONDARY, BUTTON_DANGER, TITLE_STYLE
 from ..core.compressor import PDFCompressor, CompressionResult
 from ..core.analyzer import PDFAnalyzer
-from ..utils.file_utils import validate_pdf, open_file_with_default_app, open_file_in_explorer
+from ..utils.file_utils import validate_pdf, open_file_with_default_app, open_file_in_explorer, open_directory
 from ..utils.config import load_config
 
 
@@ -70,6 +70,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = load_config()
         self.worker: Optional[CompressionWorker] = None
+        self.current_file: Optional[str] = None
+        self.last_output_dir: Optional[str] = None
+        self.last_output_files: Optional[list] = None
         self._init_ui()
         self._connect_signals()
 
@@ -216,6 +219,9 @@ class MainWindow(QMainWindow):
         self.result_widget.clear()
         self.progress_widget.reset()
 
+        self.config.set('split.enabled', self.settings_widget.is_auto_split_enabled())
+        self.config.set('output.keep_original', self.settings_widget.is_keep_original())
+
         self.worker = CompressionWorker(
             file_path,
             target_size,
@@ -268,16 +274,16 @@ class MainWindow(QMainWindow):
                     open_file_in_explorer(output_file)
             else:
                 open_file_in_explorer(result.output_files[0])
-        except Exception:
-            pass
+        except Exception as e:
+            self.statusBar().showMessage(f"无法自动打开结果: {e}")
 
     def _on_open_output_dir(self):
-        if hasattr(self, 'last_output_files') and self.last_output_files:
+        if self.last_output_files:
             open_file_in_explorer(self.last_output_files[0])
-        elif hasattr(self, 'last_output_dir'):
+        elif self.last_output_dir:
             directory = self.last_output_dir
             if Path(directory).exists():
-                os.startfile(directory)
+                open_directory(directory)
         else:
             file_path = self.file_edit.text()
             if file_path:
@@ -293,7 +299,9 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.Yes:
                 self.worker.cancel()
                 self.worker.quit()
-                self.worker.wait()
+                if not self.worker.wait(5000):
+                    self.worker.terminate()
+                    self.worker.wait(1000)
                 event.accept()
             else:
                 event.ignore()

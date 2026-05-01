@@ -15,8 +15,9 @@ def setup_logger(
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # 清除已有的处理器
-    logger.handlers.clear()
+    # 仅在没有处理器时添加，避免重复清除
+    if logger.handlers:
+        return logger
 
     # 创建格式化器
     formatter = logging.Formatter(format_str)

@@ -13,6 +13,8 @@ env/
 # IDE
 .idea/
 .vscode/
+.lingma/
+.claude/
 
 # Runtime data
 uploads/*

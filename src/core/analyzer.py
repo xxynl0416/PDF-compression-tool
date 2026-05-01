@@ -81,11 +81,11 @@ class PDFAnalyzer:
             pages: List[PageInfo] = []
             total_text_length = 0
             total_image_count = 0
+            image_index = 0
 
             for page_num in range(page_count):
                 page = self._doc[page_num]
 
-                # 文本信息：保留，但只做一次轻量提取
                 try:
                     text = page.get_text("text")
                     text_length = len(text)
@@ -93,7 +93,6 @@ class PDFAnalyzer:
                     text_length = 0
                 total_text_length += text_length
 
-                # 图像信息：只统计数量，不做 extract_image 深度提取
                 try:
                     image_list = page.get_images(full=False)
                     image_count = len(image_list)
@@ -109,6 +108,10 @@ class PDFAnalyzer:
                     image_count=image_count,
                     text_length=text_length
                 ))
+
+                page_images = self._extract_page_images(page, page_num, image_index)
+                images.extend(page_images)
+                image_index += len(page_images)
 
             return PDFInfo(
                 file_path=file_path,

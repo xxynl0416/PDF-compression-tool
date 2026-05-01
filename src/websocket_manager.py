@@ -2,14 +2,12 @@
 """
 WebSocket 管理器 - 实时进度推送
 """
+import logging
 from flask_socketio import SocketIO, emit
-from threading import Lock
+
+logger = logging.getLogger("websocket_manager")
 
 socketio = SocketIO(cors_allowed_origins="*", async_mode='threading')
-
-# 房间管理
-room_lock = Lock()
-task_rooms = {}  # task_id -> room_name
 
 
 def init_socketio(app):
@@ -20,29 +18,19 @@ def init_socketio(app):
 
 def join_task_room(task_id):
     """加入任务房间"""
-    from flask import request
     from flask_socketio import join_room
 
     room_name = f"task_{task_id}"
     join_room(room_name)
-
-    with room_lock:
-        task_rooms[task_id] = room_name
-
     return room_name
 
 
 def leave_task_room(task_id):
     """离开任务房间"""
-    from flask import request
     from flask_socketio import leave_room
 
     room_name = f"task_{task_id}"
     leave_room(room_name)
-
-    with room_lock:
-        if task_id in task_rooms:
-            del task_rooms[task_id]
 
 
 def emit_task_update(task_id, data, namespace='/'):
@@ -85,14 +73,14 @@ def emit_task_failed(task_id, error_message):
 @socketio.on('connect')
 def handle_connect():
     """客户端连接"""
-    print(f'客户端已连接')
+    logger.info('客户端已连接')
     return True
 
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """客户端断开"""
-    print(f'客户端已断开')
+    logger.info('客户端已断开')
 
 
 @socketio.on('join_task')

@@ -173,6 +173,8 @@ class PDFCompressor:
 
         except Exception as e:
             self.logger.log_error(e, "压缩过程")
+            if 'current_path' in dir() and current_path and current_path != input_path:
+                self._cleanup_temp(current_path)
             return CompressionResult(False, original_size_mb, 0, [], False, f"压缩失败: {str(e)}")
 
     def _should_try_ghostscript(self, pdf_info: PDFInfo) -> bool:
@@ -366,7 +368,7 @@ class PDFCompressor:
         best_dpi = initial_dpi
         quality_low, quality_high = self.MIN_QUALITY, self.MAX_QUALITY
         dpi_low, dpi_high = self.MIN_DPI, self.MAX_DPI
-        current_path, current_size = self._render_with_params(input_path, initial_quality, initial_dpi, 0)
+        current_path, current_size = self._render_with_params(input_path, initial_quality, initial_dpi, 0, pdf_info.pages)
         if target_min <= current_size <= target_max:
             return current_path, current_size, initial_quality, initial_dpi
         if current_size < target_min:
@@ -393,7 +395,7 @@ class PDFCompressor:
             else:
                 break
             self.progress.update(progress, f"调整参数 (Q={new_quality}, DPI={new_dpi})...", CompressionStage.FINE_TUNING.value)
-            current_path, current_size = self._render_with_params(input_path, new_quality, new_dpi, iteration)
+            current_path, current_size = self._render_with_params(input_path, new_quality, new_dpi, iteration, pdf_info.pages)
             if target_min <= current_size <= target_max:
                 self._cleanup_temp(best_path)
                 return current_path, current_size, new_quality, new_dpi
@@ -432,12 +434,12 @@ class PDFCompressor:
             quality, dpi = 45, 72
         return quality, dpi
 
-    def _render_page_worker(self, input_path: str, page_num: int, quality: int, default_dpi: int):
+    def _render_page_worker(self, input_path: str, page_num: int, quality: int, default_dpi: int, page_info=None):
         doc = fitz.open(input_path)
         try:
             page = doc[page_num]
             rect = page.rect
-            page_dpi = self._adaptive_dpi_for_page(page, default_dpi)
+            page_dpi = self._adaptive_dpi_for_page(page, default_dpi, page_info)
             page_matrix = fitz.Matrix(page_dpi / 72.0, page_dpi / 72.0)
             pix = page.get_pixmap(matrix=page_matrix, alpha=False)
             img_data = pix.tobytes("jpeg", jpg_quality=quality)
@@ -447,25 +449,30 @@ class PDFCompressor:
         finally:
             doc.close()
 
-    def _render_with_params(self, input_path: str, quality: int, dpi: int, iteration: int) -> Tuple[str, float]:
-        doc = fitz.open(input_path)
-        try:
-            total_pages = len(doc)
-        finally:
-            doc.close()
-        base = input_path.replace("_stage1_temp.pdf", "")
-        output_path = f"{base}_stage2_temp.pdf" if iteration == 0 else f"{base}_temp_{iteration}.pdf"
+    def _render_with_params(self, input_path: str, quality: int, dpi: int, iteration: int, pages=None) -> Tuple[str, float]:
+        total_pages = len(pages) if pages else 0
+        if total_pages == 0:
+            doc = fitz.open(input_path)
+            try:
+                total_pages = len(doc)
+            finally:
+                doc.close()
+        p = Path(input_path)
+        stem = p.stem.replace("_stage1_temp", "").replace("_stage2_temp", "")
+        suffix = f"_stage2_temp.pdf" if iteration == 0 else f"_temp_{iteration}.pdf"
+        output_path = str(p.parent / f"{stem}{suffix}")
         self._total_pages = total_pages
         self._pages_processed = 0
         if self.use_multithreading and total_pages > 1:
-            return self._render_multithreaded(input_path, output_path, quality, dpi, total_pages)
-        return self._render_single_threaded(input_path, output_path, quality, dpi, total_pages)
+            return self._render_multithreaded(input_path, output_path, quality, dpi, total_pages, pages)
+        return self._render_single_threaded(input_path, output_path, quality, dpi, total_pages, pages)
 
-    def _render_multithreaded(self, input_path: str, output_path: str, quality: int, dpi: int, total_pages: int) -> Tuple[str, float]:
+    def _render_multithreaded(self, input_path: str, output_path: str, quality: int, dpi: int, total_pages: int, pages=None) -> Tuple[str, float]:
         new_doc = fitz.open()
         results = [None] * total_pages
         with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as executor:
-            futures = {executor.submit(self._render_page_worker, input_path, page_num, quality, dpi): page_num for page_num in range(total_pages)}
+            page_info_list = pages if pages else [None] * total_pages
+            futures = {executor.submit(self._render_page_worker, input_path, page_num, quality, dpi, page_info_list[page_num] if page_num < len(page_info_list) else None): page_num for page_num in range(total_pages)}
             for future in as_completed(futures):
                 page_num, width, height, img_data, page_dpi, success = future.result()
                 results[page_num] = (width, height, img_data, page_dpi, success)
@@ -486,11 +493,15 @@ class PDFCompressor:
         new_doc.close()
         return output_path, get_file_size_mb(output_path)
 
-    def _adaptive_dpi_for_page(self, page: fitz.Page, default_dpi: int) -> int:
+    def _adaptive_dpi_for_page(self, page: fitz.Page, default_dpi: int, page_info=None) -> int:
         try:
-            text = page.get_text()
-            text_length = len(text.strip())
-            image_count = len(page.get_images(full=False))
+            if page_info is not None:
+                text_length = page_info.text_length
+                image_count = page_info.image_count
+            else:
+                text = page.get_text()
+                text_length = len(text.strip())
+                image_count = len(page.get_images(full=False))
             if image_count == 0 and text_length > 100:
                 return 72
             if image_count > 2:
@@ -501,14 +512,15 @@ class PDFCompressor:
         except Exception:
             return default_dpi
 
-    def _render_single_threaded(self, input_path: str, output_path: str, quality: int, dpi: int, total_pages: int) -> Tuple[str, float]:
+    def _render_single_threaded(self, input_path: str, output_path: str, quality: int, dpi: int, total_pages: int, pages=None) -> Tuple[str, float]:
         doc = fitz.open(input_path)
         new_doc = fitz.open()
         try:
             for page_num in range(total_pages):
                 page = doc[page_num]
                 rect = page.rect
-                page_dpi = self._adaptive_dpi_for_page(page, dpi)
+                page_info = pages[page_num] if pages and page_num < len(pages) else None
+                page_dpi = self._adaptive_dpi_for_page(page, dpi, page_info)
                 page_matrix = fitz.Matrix(page_dpi / 72.0, page_dpi / 72.0)
                 pix = page.get_pixmap(matrix=page_matrix, alpha=False)
                 img_data = pix.tobytes("jpeg", jpg_quality=quality)
@@ -526,7 +538,8 @@ class PDFCompressor:
 
     def _stage1_lightweight_compress(self, input_path: str) -> str:
         doc = fitz.open(input_path)
-        output_path = input_path.replace(".pdf", "_stage1_temp.pdf")
+        p = Path(input_path)
+        output_path = str(p.parent / f"{p.stem}_stage1_temp.pdf")
         try:
             doc.set_metadata({})
             for page in doc:

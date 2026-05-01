@@ -53,7 +53,9 @@ class ImageProcessor:
                 # 有透明通道的图像，保持为PNG或转换为RGB
                 compressed_data = self._compress_transparent(img, quality)
             elif img.mode == '1':
-                # 黑白图像
+                # 1-bit位图，使用PNG无损编码
+                if img.mode != 'L':
+                    img = img.convert('L')
                 compressed_data = self._compress_grayscale(img, quality)
             else:
                 # RGB或其他模式，转为JPEG压缩
@@ -91,52 +93,56 @@ class ImageProcessor:
     def _compress_rgb(self, img: Image.Image, quality: int) -> bytes:
         """压缩RGB图像为JPEG"""
         buffer = io.BytesIO()
-        img.save(buffer, format='JPEG', quality=quality, optimize=True)
+        img.save(buffer, format='JPEG', quality=quality, optimize=True, progressive=True)
         return buffer.getvalue()
 
     def _compress_transparent(self, img: Image.Image, quality: int) -> bytes:
         """压缩带透明通道的图像"""
         buffer = io.BytesIO()
 
-        # 尝试保持PNG格式（无损压缩）
         img.save(buffer, format='PNG', optimize=True)
         png_size = buffer.tell()
 
-        # 也尝试转换为JPEG（有损但更小）
-        if img.mode == 'RGBA':
-            # 创建白色背景
-            background = Image.new('RGB', img.size, (255, 255, 255))
-            background.paste(img, mask=img.split()[3])
-            rgb_img = background
-        elif img.mode == 'LA':
-            background = Image.new('L', img.size, 255)
-            background.paste(img, mask=img.split()[1])
-            rgb_img = background.convert('RGB')
-        elif img.mode == 'P':
-            rgb_img = img.convert('RGB')
-        else:
-            rgb_img = img.convert('RGB')
+        rgb_img = None
+        background = None
+        try:
+            if img.mode == 'RGBA':
+                background = Image.new('RGB', img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[3])
+                rgb_img = background
+            elif img.mode == 'LA':
+                background = Image.new('L', img.size, 255)
+                background.paste(img, mask=img.split()[1])
+                rgb_img = background.convert('RGB')
+            elif img.mode == 'P':
+                rgb_img = img.convert('RGB')
+            else:
+                rgb_img = img.convert('RGB')
 
-        jpeg_buffer = io.BytesIO()
-        rgb_img.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
-        jpeg_size = jpeg_buffer.tell()
+            jpeg_buffer = io.BytesIO()
+            rgb_img.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True, progressive=True)
+            jpeg_size = jpeg_buffer.tell()
 
-        # 选择更小的一个
-        if jpeg_size < png_size:
-            return jpeg_buffer.getvalue()
-        else:
-            buffer.seek(0)
-            return buffer.getvalue()
+            if jpeg_size < png_size:
+                return jpeg_buffer.getvalue()
+            else:
+                buffer.seek(0)
+                return buffer.getvalue()
+        finally:
+            if rgb_img is not None and rgb_img is not background:
+                rgb_img.close()
+            if background is not None:
+                background.close()
 
     def _compress_grayscale(self, img: Image.Image, quality: int) -> bytes:
         """压缩灰度图像"""
         buffer = io.BytesIO()
-
-        # 转换为RGB以使用JPEG压缩
         rgb_img = img.convert('RGB')
-        rgb_img.save(buffer, format='JPEG', quality=quality, optimize=True)
-
-        return buffer.getvalue()
+        try:
+            rgb_img.save(buffer, format='JPEG', quality=quality, optimize=True, progressive=True)
+            return buffer.getvalue()
+        finally:
+            rgb_img.close()
 
     def reduce_dpi(
         self,

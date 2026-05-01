@@ -192,7 +192,7 @@ class PDFSplitter:
                                 from_page=start_page + sub_start, 
                                 to_page=start_page + sub_end - 1
                             )
-                            sub_doc.save(sub_output_path, garbage=4, deflate=True)
+                            sub_doc.save(sub_output_path, garbage=4, deflate=True, clean=True)
                             sub_doc.close()
                             
                             sub_size = get_file_size_mb(sub_output_path)
@@ -254,7 +254,7 @@ class PDFSplitter:
                 new_doc = fitz.open()
                 try:
                     new_doc.insert_pdf(doc, from_page=start, to_page=end - 1)
-                    new_doc.save(output_path, garbage=4, deflate=True)
+                    new_doc.save(output_path, garbage=4, deflate=True, clean=True)
                     output_files.append(output_path)
                 finally:
                     new_doc.close()
