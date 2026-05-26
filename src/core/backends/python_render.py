@@ -114,34 +114,36 @@ class PythonRenderBackend(CompressionBackend):
     def _render_multithreaded(self, input_path: str, output_path: str, quality: int, dpi: int,
                               total_pages: int, pages=None, progress_callback=None) -> Tuple[str, float]:
         new_doc = fitz.open()
-        results = [None] * total_pages
-        with ThreadPoolExecutor() as executor:
-            page_info_list = pages if pages else [None] * total_pages
-            futures = {
-                executor.submit(self._render_page_worker, input_path, page_num, quality, dpi,
-                                page_info_list[page_num] if page_num < len(page_info_list) else None): page_num
-                for page_num in range(total_pages)
-            }
-            for future in as_completed(futures):
-                page_num, width, height, img_data, page_dpi, success = future.result()
-                results[page_num] = (width, height, img_data, page_dpi, success)
-                with self._progress_lock:
-                    self._pages_processed += 1
-                    progress_pct = int((self._pages_processed / self._total_pages) * 100)
-                    if progress_callback:
-                        progress_callback(30 + int(progress_pct * 0.6), f"处理页面 {self._pages_processed}/{self._total_pages} (DPI={page_dpi})")
+        try:
+            results = [None] * total_pages
+            with ThreadPoolExecutor() as executor:
+                page_info_list = pages if pages else [None] * total_pages
+                futures = {
+                    executor.submit(self._render_page_worker, input_path, page_num, quality, dpi,
+                                    page_info_list[page_num] if page_num < len(page_info_list) else None): page_num
+                    for page_num in range(total_pages)
+                }
+                for future in as_completed(futures):
+                    page_num, width, height, img_data, page_dpi, success = future.result()
+                    results[page_num] = (width, height, img_data, page_dpi, success)
+                    with self._progress_lock:
+                        self._pages_processed += 1
+                        progress_pct = int((self._pages_processed / self._total_pages) * 100) if self._total_pages else 0
+                        if progress_callback:
+                            progress_callback(30 + int(progress_pct * 0.6), f"处理页面 {self._pages_processed}/{self._total_pages} (DPI={page_dpi})")
 
-        for item in results:
-            if not item:
-                continue
-            width, height, img_data, _, success = item
-            if success and img_data:
+            for item in results:
+                if not item:
+                    continue
+                width, height, img_data, _, success = item
                 rect = fitz.Rect(0, 0, width, height)
                 page = new_doc.new_page(width=width, height=height)
-                page.insert_image(rect, stream=img_data)
+                if success and img_data:
+                    page.insert_image(rect, stream=img_data)
 
-        new_doc.save(output_path, garbage=4, deflate=True)
-        new_doc.close()
+            new_doc.save(output_path, garbage=4, deflate=True)
+        finally:
+            new_doc.close()
         return output_path, get_file_size_mb(output_path)
 
     def _render_single_threaded(self, input_path: str, output_path: str, quality: int, dpi: int,

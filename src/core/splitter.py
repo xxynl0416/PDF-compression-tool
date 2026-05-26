@@ -187,13 +187,15 @@ class PDFSplitter:
                             )
                             
                             sub_doc = fitz.open()
-                            sub_doc.insert_pdf(
-                                doc, 
-                                from_page=start_page + sub_start, 
-                                to_page=start_page + sub_end - 1
-                            )
-                            sub_doc.save(sub_output_path, garbage=4, deflate=True, clean=True)
-                            sub_doc.close()
+                            try:
+                                sub_doc.insert_pdf(
+                                    doc,
+                                    from_page=start_page + sub_start,
+                                    to_page=start_page + sub_end - 1
+                                )
+                                sub_doc.save(sub_output_path, garbage=4, deflate=True, clean=True)
+                            finally:
+                                sub_doc.close()
                             
                             sub_size = get_file_size_mb(sub_output_path)
                             output_files.append(sub_output_path)

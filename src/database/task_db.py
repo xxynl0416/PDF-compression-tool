@@ -175,14 +175,71 @@ class TaskDatabase:
             logger.error(f"删除任务失败: {e}")
             return False
 
+    def start_task(self, task_id: str) -> bool:
+        """原子地将任务状态从 uploaded 改为 processing，防止并发重复启动"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "UPDATE tasks SET status = 'processing', started_at = ? WHERE id = ? AND status = 'uploaded'",
+                    (datetime.now().isoformat(), task_id)
+                )
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"启动任务失败: {e}")
+            return False
+
+    def cancel_task(self, task_id: str) -> bool:
+        """原子地取消正在处理的任务"""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.execute(
+                    "UPDATE tasks SET status = 'cancelled', completed_at = ?, message = '用户取消' WHERE id = ? AND status = 'processing'",
+                    (datetime.now().isoformat(), task_id)
+                )
+                return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"取消任务失败: {e}")
+            return False
+
     def cleanup_old_tasks(self, hours: int = 24) -> int:
         try:
             with self._get_connection() as conn:
+                # 先获取待删除任务的文件路径
+                cursor = conn.execute(
+                    "SELECT input_path, result FROM tasks WHERE created_at < datetime('now', ?)",
+                    (f'-{hours} hours',)
+                )
+                rows = cursor.fetchall()
+                for row in rows:
+                    self._cleanup_task_files(dict(row))
                 cursor = conn.execute("DELETE FROM tasks WHERE created_at < datetime('now', ?)", (f'-{hours} hours',))
                 return cursor.rowcount
         except Exception as e:
             logger.error(f"清理过期任务失败: {e}")
             return 0
+
+    def _cleanup_task_files(self, task_row: dict):
+        """清理任务关联的磁盘文件"""
+        import os
+        input_path = task_row.get('input_path')
+        if input_path and os.path.exists(input_path):
+            try:
+                os.remove(input_path)
+            except OSError as e:
+                logger.warning(f"清理输入文件失败 {input_path}: {e}")
+        result = task_row.get('result')
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except Exception:
+                result = {}
+        if isinstance(result, dict):
+            for f in result.get('output_files', []):
+                if f and os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except OSError as e:
+                        logger.warning(f"清理输出文件失败 {f}: {e}")
 
     def get_task_stats(self) -> Dict[str, Any]:
         try:

@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """主窗口模块 - 应用现代样式"""
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger("gui.main_window")
 from typing import Optional
 from PyQt5.QtWidgets import (
     QMainWindow,
@@ -210,6 +213,10 @@ class MainWindow(QMainWindow):
         self.file_info_widget.update_info(0, 0, 0)
         self.statusBar().showMessage(f"正在分析: {Path(file_path).name}...")
         self.start_btn.setEnabled(False)
+        if self._analysis_worker and self._analysis_worker.isRunning():
+            self._analysis_worker.finished.disconnect(self._on_analysis_finished)
+            self._analysis_worker.quit()
+            self._analysis_worker.wait(1000)
         self._analysis_worker = AnalysisWorker(file_path)
         self._analysis_worker.finished.connect(self._on_analysis_finished)
         self._analysis_worker.start()
@@ -274,7 +281,8 @@ class MainWindow(QMainWindow):
         if self.worker:
             self.worker.cancel()
             self.worker.quit()
-            self.worker.wait()
+            if not self.worker.wait(5000):
+                logger.warning("压缩线程未能在 5 秒内停止")
             self.worker = None
         self._reset_ui_state()
         self.statusBar().showMessage("已取消")

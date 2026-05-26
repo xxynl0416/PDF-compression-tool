@@ -346,11 +346,12 @@
             try {
                 const payload = {
                     task_id: currentTaskId,
-                    target_size: parseInt(targetSizeInput.value),
-                    quality: parseInt(qualityInput.value),
+                    target_size: parseInt(targetSizeInput.value, 10),
+                    quality: parseInt(qualityInput.value, 10),
                     force_compress: document.getElementById('forceCompress').checked,
                     compression_mode: compressionModeInput.value,
-                    backend: backendInput.value
+                    backend: backendInput.value,
+                    split_enabled: document.getElementById('autoSplit').checked
                 };
                 const response = await fetch('/api/compress', {
                     method: 'POST',
@@ -359,8 +360,8 @@
                 });
                 const data = await response.json();
                 if (response.ok) {
-                    // Polling as fallback — slower interval if WebSocket is active
-                    statusCheckInterval = setInterval(checkStatus, wsProgressReceived ? 2000 : 500);
+                    // Polling as fallback
+                    statusCheckInterval = setInterval(checkStatus, 1000);
                 } else {
                     showError(data.error || '启动压缩失败');
                 }
@@ -393,6 +394,9 @@
                 } else if (data.status === 'failed') {
                     stopPolling();
                     showError(data.result?.message || '压缩失败');
+                } else if (data.status === 'cancelled') {
+                    stopPolling();
+                    showError('任务已取消');
                 }
             } catch (error) {
                 pollFailCount++;

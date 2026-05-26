@@ -79,6 +79,8 @@ class PDFAnalyzer:
             file_size_mb = get_file_size_mb(file_path)
             page_count = len(self._doc)
             is_encrypted = self._doc.is_encrypted
+            if is_encrypted:
+                logger.warning(f"PDF 已加密，分析结果可能不完整: {file_path}")
 
             images: List[ImageInfo] = []
             pages: List[PageInfo] = []

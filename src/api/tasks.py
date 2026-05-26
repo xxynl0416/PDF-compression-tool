@@ -82,7 +82,11 @@ def init_tasks_blueprint(app, db, config, runner, limiter):
             return jsonify({'error': '无效的PDF文件'}), 400
 
         analyzer = PDFAnalyzer()
-        info = analyzer.quick_check(str(input_path))
+        try:
+            info = analyzer.quick_check(str(input_path))
+        except Exception as e:
+            os.remove(str(input_path))
+            return jsonify({'error': f'无法读取PDF文件: {str(e)}'}), 400
         file_info = {'size_mb': info['file_size_mb'], 'page_count': info['page_count']}
 
         db.create_task(
@@ -128,8 +132,6 @@ def init_tasks_blueprint(app, db, config, runner, limiter):
         task = db.get_task(task_id)
         if not task:
             return jsonify({'error': '无效的任务ID'}), 400
-        if task['status'] == 'processing':
-            return jsonify({'error': '任务正在处理中'}), 400
 
         target_size = data.get('target_size', config.target_size_mb)
         quality = data.get('quality', config.default_quality)
@@ -138,6 +140,10 @@ def init_tasks_blueprint(app, db, config, runner, limiter):
         backend = data.get('backend', config.compression_backend)
 
         db.update_task_params(task_id, target_size, quality, force_compress, compression_mode, backend)
+
+        # 原子状态转换，防止并发重复启动
+        if not db.start_task(task_id):
+            return jsonify({'error': '任务已在处理中或状态异常'}), 400
 
         import threading
         thread = threading.Thread(
@@ -208,7 +214,7 @@ def init_tasks_blueprint(app, db, config, runner, limiter):
         input_path = task.get('input_path')
         if input_path and os.path.exists(input_path):
             os.remove(input_path)
-        result = task.get('result', {})
+        result = task.get('result') or {}
         output_files = result.get('output_files', [])
         for file_path in output_files:
             if os.path.exists(file_path):
@@ -221,10 +227,10 @@ def init_tasks_blueprint(app, db, config, runner, limiter):
         task = db.get_task(task_id)
         if not task:
             return jsonify({'error': '无效的任务ID'}), 400
-        if task['status'] != 'processing':
+        # 原子取消，防止竞态
+        if not db.cancel_task(task_id):
             return jsonify({'error': '任务不在处理中'}), 400
         runner.cancel(task_id)
-        db.update_task_status(task_id, 'failed', progress=0, message='用户取消')
         from ..websocket_manager import emit_task_failed
         emit_task_failed(task_id, '用户取消')
         return jsonify({'message': '取消请求已发送'})

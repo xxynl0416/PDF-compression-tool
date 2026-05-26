@@ -116,12 +116,14 @@ def get_unique_output_path(input_path: str, suffix: str = "_compressed") -> str:
     stem = path.stem
     extension = path.suffix
 
-    while True:
+    max_counter = 10000
+    while counter <= max_counter:
         output_name = f"{stem}{suffix}_{counter}{extension}"
         output_path = str(parent / output_name)
         if not os.path.exists(output_path):
             return output_path
         counter += 1
+    raise OSError(f"无法生成唯一输出路径（已尝试 {max_counter} 次）")
 
 
 def format_size(size_mb: float) -> str:

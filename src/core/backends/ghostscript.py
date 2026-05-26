@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -18,6 +19,9 @@ GS_TIMEOUT = 300000
 
 
 class GhostscriptBackend(CompressionBackend):
+
+    _cached_gs_path: Optional[str] = None
+    _gs_cache_resolved: bool = False
 
     def __init__(
         self,
@@ -55,7 +59,7 @@ class GhostscriptBackend(CompressionBackend):
         if not gs_path:
             return BackendResult(None, False, message='Ghostscript 不可用')
 
-        temp_output = str(Path(output_path).with_name(Path(output_path).stem + "_gs_temp.pdf"))
+        temp_output = str(Path(output_path).with_name(Path(output_path).stem + f"_gs_{uuid.uuid4().hex[:8]}.pdf"))
         profile = self._estimate_gs_profile(pdf_info)
         cmd = self._build_gs_command(gs_path, input_path, temp_output, profile)
 
@@ -105,6 +109,9 @@ class GhostscriptBackend(CompressionBackend):
             return BackendResult(None, False, message=f'Ghostscript 异常: {e}')
 
     def _resolve_ghostscript(self) -> Optional[str]:
+        if GhostscriptBackend._gs_cache_resolved:
+            return GhostscriptBackend._cached_gs_path
+
         candidates = []
         if self.ghostscript_path:
             candidates.append(self.ghostscript_path)
@@ -120,9 +127,12 @@ class GhostscriptBackend(CompressionBackend):
                 result = subprocess.run([path, "-version"], capture_output=True, text=True, timeout=10, shell=False)
                 if result.returncode == 0 and result.stdout.strip():
                     logger.info(f"检测到 Ghostscript: {path} ({result.stdout.strip()})")
+                    GhostscriptBackend._cached_gs_path = path
+                    GhostscriptBackend._gs_cache_resolved = True
                     return path
             except Exception:
                 continue
+        GhostscriptBackend._gs_cache_resolved = True
         return None
 
     def _estimate_gs_profile(self, pdf_info: PDFInfo) -> dict:

@@ -3,7 +3,10 @@
 WebSocket 管理器 - 实时进度推送
 """
 import logging
+import re
 from flask_socketio import SocketIO, emit
+
+_UUID_RE = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 
 logger = logging.getLogger("websocket_manager")
 
@@ -87,7 +90,7 @@ def handle_disconnect():
 def on_join_task(data):
     """客户端加入任务房间"""
     task_id = data.get('task_id')
-    if task_id:
+    if task_id and _UUID_RE.match(str(task_id)):
         join_task_room(task_id)
         emit('joined', {'task_id': task_id})
 

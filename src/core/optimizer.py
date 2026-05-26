@@ -84,13 +84,13 @@ class CompressionOptimizer:
             progress = 30 + iteration * 15
 
             if best_size < target_min:
-                new_quality = min((quality_low + quality_high) // 2 + 8, MAX_QUALITY)
-                new_dpi = min((dpi_low + dpi_high) // 2 + 10, MAX_DPI)
+                new_quality = min((quality_low + quality_high) // 2, MAX_QUALITY)
+                new_dpi = min((dpi_low + dpi_high) // 2, MAX_DPI)
                 quality_low = new_quality
                 dpi_low = new_dpi
             elif best_size > target_max:
-                new_quality = max((quality_low + quality_high) // 2 - 8, MIN_QUALITY)
-                new_dpi = max((dpi_low + dpi_high) // 2 - 10, MIN_DPI)
+                new_quality = max((quality_low + quality_high) // 2, MIN_QUALITY)
+                new_dpi = max((dpi_low + dpi_high) // 2, MIN_DPI)
                 quality_high = new_quality
                 dpi_high = new_dpi
             else:

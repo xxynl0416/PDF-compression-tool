@@ -201,6 +201,14 @@ class PDFCompressor:
                 page.clean_contents()
             doc.save(output_path, garbage=4, deflate=True, clean=True)
             return output_path
+        except Exception:
+            doc.close()
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            raise
         finally:
             doc.close()
 
