@@ -38,12 +38,13 @@ def run_gui():
         sys.exit(1)
 
 
-def run_cli(input_path: str, output_path: str = None, target_size: float = 200):
+def run_cli(input_path: str, output_path: str = None, target_size: float = 200,
+            quality: int = 85, mode: str = 'fast', backend: str = 'auto',
+            force: bool = False, no_split: bool = False):
     """命令行模式运行"""
     from src.core.compressor import compress_pdf
     from src.utils.file_utils import validate_pdf, get_file_size_mb, format_size
 
-    # 验证文件
     if not validate_pdf(input_path):
         print(f"错误: {input_path} 不是有效的PDF文件")
         return 1
@@ -51,24 +52,26 @@ def run_cli(input_path: str, output_path: str = None, target_size: float = 200):
     original_size = get_file_size_mb(input_path)
     print(f"原始文件大小: {format_size(original_size)}")
 
-    # 检查是否需要压缩
-    if original_size <= target_size:
-        print(f"文件已小于目标大小 {target_size}MB，无需压缩")
+    if original_size <= target_size and not force:
+        print(f"文件已小于目标大小 {target_size}MB，无需压缩（使用 --force 强制压缩）")
         return 0
 
-    # 执行压缩
     def progress_callback(progress: int, message: str):
         print(f"[{progress}%] {message}")
 
-    print(f"开始压缩，目标大小: {target_size}MB...")
+    print(f"开始压缩，目标大小: {target_size}MB，模式: {mode}，后端: {backend}...")
     result = compress_pdf(
         input_path,
         output_path,
         target_size_mb=target_size,
-        progress_callback=progress_callback
+        quality=quality,
+        force_compress=force,
+        compression_mode=mode,
+        backend=backend,
+        split_enabled=not no_split,
+        progress_callback=progress_callback,
     )
 
-    # 输出结果
     if result.success:
         print(f"\n压缩完成!")
         print(f"最终大小: {format_size(result.final_size_mb)}")
@@ -94,10 +97,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-    python main.py                          # 启动图形界面
-    python main.py --cli document.pdf       # 压缩文件（命令行）
-    python main.py --cli input.pdf -o output.pdf  # 指定输出文件
-    python main.py --cli input.pdf -t 100   # 目标大小100MB
+    python main.py                                    # 启动图形界面
+    python main.py --cli document.pdf                 # 压缩文件（命令行）
+    python main.py --cli input.pdf -o output.pdf      # 指定输出文件
+    python main.py --cli input.pdf -t 100             # 目标大小100MB
+    python main.py --cli input.pdf -m balanced -b python  # 平衡模式 + Python后端
+    python main.py --cli input.pdf -q 70 --force      # 质量70，强制压缩
         """
     )
 
@@ -122,6 +127,34 @@ def main():
     )
 
     parser.add_argument(
+        '-m', '--mode',
+        choices=['fast', 'balanced', 'high_quality'],
+        default='fast',
+        help='压缩模式: fast(默认) | balanced | high_quality'
+    )
+    parser.add_argument(
+        '-b', '--backend',
+        choices=['auto', 'python', 'ghostscript'],
+        default='auto',
+        help='压缩后端: auto(默认) | python | ghostscript'
+    )
+    parser.add_argument(
+        '-q', '--quality',
+        type=int,
+        default=85,
+        help='图像质量 30~100，默认85'
+    )
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='强制压缩（即使文件已小于目标大小）'
+    )
+    parser.add_argument(
+        '--no-split',
+        action='store_true',
+        help='禁用自动分段'
+    )
+    parser.add_argument(
         '-v', '--version',
         action='version',
         version='PDF压缩工具 v1.0.0'
@@ -130,8 +163,9 @@ def main():
     args = parser.parse_args()
 
     if args.cli:
-        # 命令行模式
-        return run_cli(args.cli, args.output, args.target)
+        return run_cli(args.cli, args.output, args.target,
+                       quality=args.quality, mode=args.mode, backend=args.backend,
+                       force=args.force, no_split=args.no_split)
     else:
         # 图形界面模式
         run_gui()

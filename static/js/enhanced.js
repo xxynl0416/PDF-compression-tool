@@ -21,12 +21,16 @@ class WebSocketManager {
     }
 
     connect() {
-        this.socket = io();
+        this.socket = io({ reconnection: true, reconnectionDelay: 1000, reconnectionAttempts: 10 });
 
         this.socket.on('connect', () => {
             this.isConnected = true;
             this.updateConnectionStatus(true);
             this.callbacks.connected.forEach(cb => cb());
+            // Rejoin task room after reconnection
+            if (this.currentTaskId) {
+                this.socket.emit('join_task', { task_id: this.currentTaskId });
+            }
         });
 
         this.socket.on('disconnect', () => {
@@ -42,11 +46,15 @@ class WebSocketManager {
 
     joinTask(taskId) {
         this.currentTaskId = taskId;
-        this.socket.emit('join_task', { task_id: taskId });
+        if (this.isConnected) {
+            this.socket.emit('join_task', { task_id: taskId });
+        }
     }
 
     leaveTask(taskId) {
-        this.socket.emit('leave_task', { task_id: taskId });
+        if (this.isConnected) {
+            this.socket.emit('leave_task', { task_id: taskId });
+        }
         this.currentTaskId = null;
     }
 
@@ -65,7 +73,7 @@ class WebSocketManager {
     updateConnectionStatus(connected) {
         const statusEl = document.getElementById('connectionStatus');
         const statusText = document.getElementById('statusText');
-        
+
         if (statusEl && statusText) {
             statusEl.className = `connection-status ${connected ? 'connected' : 'disconnected'}`;
             statusText.textContent = connected ? '已连接' : '连接中...';

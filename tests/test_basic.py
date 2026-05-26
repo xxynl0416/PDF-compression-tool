@@ -12,7 +12,7 @@ def test_imports():
     print("1. 测试模块导入...")
     try:
         from src.utils import file_utils, logger, config
-        from src.core import analyzer, image_processor, compressor, splitter
+        from src.core import analyzer, compressor, splitter
         from src.database import task_db
         print("   [OK] 模块导入成功")
         return True
@@ -60,39 +60,34 @@ def test_analyzer():
     return True
 
 
-def test_image_processor():
-    print("\n5. 测试图像处理器...")
-    from src.core.image_processor import ImageProcessor
-    from PIL import Image
-    import io
-    processor = ImageProcessor()
-    img = Image.new('RGB', (100, 100), color='red')
-    buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
-    test_data = buffer.getvalue()
-    compressed, success = processor.compress_image(test_data, quality=85)
-    print(f"   原始大小: {len(test_data)} bytes")
-    print(f"   压缩后大小: {len(compressed)} bytes")
-    print("   [OK] 图像处理测试通过")
-    return True
-
-
 def test_compressor_init():
     print("\n6. 测试压缩器初始化...")
     from src.core.compressor import PDFCompressor, CompressionResult
+    from src.core.optimizer import CompressionOptimizer
     from src.core.analyzer import PDFInfo, PageInfo
-    fast = PDFCompressor(target_size_mb=200, compression_mode="fast", backend="auto")
-    balanced = PDFCompressor(target_size_mb=200, compression_mode="balanced", backend="python")
-    high = PDFCompressor(target_size_mb=200, compression_mode="high_quality", backend="ghostscript")
-    assert fast.max_render_iterations == 1
-    assert balanced.max_render_iterations == 2
-    assert high.max_render_iterations == 3
+    from src.core.backends.ghostscript import GhostscriptBackend
+
+    # 测试优化器迭代次数
+    fast_opt = CompressionOptimizer(200, compression_mode="fast")
+    balanced_opt = CompressionOptimizer(200, compression_mode="balanced")
+    high_opt = CompressionOptimizer(200, compression_mode="high_quality")
+    assert fast_opt.max_iterations == 1
+    assert balanced_opt.max_iterations == 2
+    assert high_opt.max_iterations == 3
+
+    # 测试压缩结果
     result = CompressionResult(True, 300, 150, ["test_compressed.pdf"], False, "测试")
     assert result.compression_ratio == 0.5
+
+    # 测试压缩器策略
+    fast = PDFCompressor(target_size_mb=200, compression_mode="fast", backend="auto")
     pdf_info = PDFInfo('dummy.pdf', 220, 10, 1, True, False, [], [PageInfo(i, 595, 842, 0, 500) for i in range(10)])
     assert fast._should_skip_image_rerender(pdf_info, 210) is True
-    assert balanced._should_try_ghostscript(pdf_info) is False
-    assert high._should_try_ghostscript(pdf_info) is True
+
+    # 测试后端选择
+    gs_backend = GhostscriptBackend("balanced", 200)
+    assert gs_backend.should_try(pdf_info, "python") is False
+    assert gs_backend.should_try(pdf_info, "ghostscript") is True
     print("   [OK] 压缩器策略测试通过")
     return True
 
@@ -126,7 +121,6 @@ def run_tests():
         test_config,
         test_file_utils,
         test_analyzer,
-        test_image_processor,
         test_compressor_init,
         test_task_db_schema,
     ]

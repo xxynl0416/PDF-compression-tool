@@ -27,12 +27,29 @@ from ..utils.file_utils import validate_pdf, open_file_with_default_app, open_fi
 from ..utils.config import load_config
 
 
+class AnalysisWorker(QThread):
+    finished = pyqtSignal(str, object)  # file_path, result_or_exception
+
+    def __init__(self, file_path: str, parent=None):
+        super().__init__(parent)
+        self.file_path = file_path
+
+    def run(self):
+        try:
+            analyzer = PDFAnalyzer()
+            info = analyzer.quick_check(self.file_path)
+            self.finished.emit(self.file_path, info)
+        except Exception as e:
+            self.finished.emit(self.file_path, e)
+
+
 class CompressionWorker(QThread):
     progress_updated = pyqtSignal(int, str)
     finished = pyqtSignal(object)
 
     def __init__(self, input_path: str, target_size_mb: float, quality: int,
-                 compression_mode: str = 'fast', backend: str = 'auto', ghostscript_path: str = '', parent=None):
+                 compression_mode: str = 'fast', backend: str = 'auto', ghostscript_path: str = '',
+                 output_suffix: str = '_compressed', split_enabled: bool = True, parent=None):
         super().__init__(parent)
         self.input_path = input_path
         self.target_size_mb = target_size_mb
@@ -40,6 +57,8 @@ class CompressionWorker(QThread):
         self.compression_mode = compression_mode
         self.backend = backend
         self.ghostscript_path = ghostscript_path
+        self.output_suffix = output_suffix
+        self.split_enabled = split_enabled
         self._is_cancelled = False
 
     def run(self):
@@ -50,7 +69,9 @@ class CompressionWorker(QThread):
                 progress_callback=self._on_progress,
                 compression_mode=self.compression_mode,
                 backend=self.backend,
-                ghostscript_path=self.ghostscript_path or None
+                ghostscript_path=self.ghostscript_path or None,
+                output_suffix=self.output_suffix,
+                split_enabled=self.split_enabled,
             )
             result = compressor.compress(self.input_path)
             self.finished.emit(result)
@@ -70,6 +91,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = load_config()
         self.worker: Optional[CompressionWorker] = None
+        self._analysis_worker: Optional[AnalysisWorker] = None
         self.current_file: Optional[str] = None
         self.last_output_dir: Optional[str] = None
         self.last_output_files: Optional[list] = None
@@ -185,19 +207,30 @@ class MainWindow(QMainWindow):
             return
         self.file_edit.setText(file_path)
         self.current_file = file_path
-        try:
-            analyzer = PDFAnalyzer()
-            info = analyzer.quick_check(file_path)
-            self.file_info_widget.update_info(info['file_size_mb'], info['page_count'], 0)
-            target_size = self.settings_widget.get_target_size()
-            if info['file_size_mb'] <= target_size:
-                self.result_widget.show_no_need(info['file_size_mb'], target_size)
-            else:
-                self.result_widget.clear()
-            self.open_dir_btn.setEnabled(False)
-            self.statusBar().showMessage(f"已加载: {Path(file_path).name}")
-        except Exception as e:
-            QMessageBox.warning(self, "文件错误", f"无法读取文件: {str(e)}")
+        self.file_info_widget.update_info(0, 0, 0)
+        self.statusBar().showMessage(f"正在分析: {Path(file_path).name}...")
+        self.start_btn.setEnabled(False)
+        self._analysis_worker = AnalysisWorker(file_path)
+        self._analysis_worker.finished.connect(self._on_analysis_finished)
+        self._analysis_worker.start()
+
+    def _on_analysis_finished(self, file_path: str, result):
+        self._analysis_worker = None
+        self.start_btn.setEnabled(True)
+        if file_path != self.current_file:
+            return
+        if isinstance(result, Exception):
+            QMessageBox.warning(self, "文件错误", f"无法读取文件: {str(result)}")
+            self.statusBar().showMessage("分析失败")
+            return
+        self.file_info_widget.update_info(result['file_size_mb'], result['page_count'], 0)
+        target_size = self.settings_widget.get_target_size()
+        if result['file_size_mb'] <= target_size:
+            self.result_widget.show_no_need(result['file_size_mb'], target_size)
+        else:
+            self.result_widget.clear()
+        self.open_dir_btn.setEnabled(False)
+        self.statusBar().showMessage(f"已加载: {Path(file_path).name}")
 
     def _on_start(self):
         file_path = self.file_edit.text()
@@ -228,7 +261,9 @@ class MainWindow(QMainWindow):
             quality,
             compression_mode=compression_mode,
             backend=backend,
-            ghostscript_path=self.config.ghostscript_path
+            ghostscript_path=self.config.ghostscript_path,
+            output_suffix=self.config.output_suffix,
+            split_enabled=self.settings_widget.is_auto_split_enabled(),
         )
         self.worker.progress_updated.connect(self._on_progress_updated)
         self.worker.finished.connect(self._on_compression_finished)
@@ -306,6 +341,9 @@ class MainWindow(QMainWindow):
             else:
                 event.ignore()
         else:
+            if self._analysis_worker and self._analysis_worker.isRunning():
+                self._analysis_worker.quit()
+                self._analysis_worker.wait(3000)
             event.accept()
 
 

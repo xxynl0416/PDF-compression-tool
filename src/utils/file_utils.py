@@ -99,7 +99,7 @@ def check_disk_space(file_path: str, required_mb: float) -> bool:
         free_mb = free / (1024 * 1024)
         return free_mb >= required_mb
     except Exception:
-        return True
+        return False
 
 
 def get_unique_output_path(input_path: str, suffix: str = "_compressed") -> str:

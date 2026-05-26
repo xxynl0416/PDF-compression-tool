@@ -152,6 +152,7 @@
         <div class="card hidden" id="progressCard">
             <h3 style="margin-bottom: 16px; text-align: center;">⏳ 压缩进度</h3>
             <div class="progress-container"><div class="progress-bar"><div class="progress-fill" id="progressFill" style="width: 0%"><span class="progress-text" id="progressPercent">0%</span></div></div><div class="progress-message" id="progressMessage">准备中...</div></div>
+            <div class="btn-group" style="margin-top: 16px;"><button class="btn btn-secondary" id="cancelBtn" style="padding: 10px 24px; font-size: 14px;">取消</button></div>
         </div>
         <div class="card hidden" id="resultCard">
             <div class="result-container">
@@ -186,6 +187,11 @@
 
         let currentTaskId = null;
         let statusCheckInterval = null;
+        let wsProgressReceived = false;
+        let pollFailCount = 0;
+        const MAX_POLL_FAILS = 10;
+        const MAX_POLL_MINUTES = 5;
+        let pollStartTime = null;
         let uploadedDefaults = { target_size: 200, quality: 70, compression_mode: 'fast', backend: 'auto' };
 
         const fileInput = document.getElementById('fileInput');
@@ -201,6 +207,7 @@
         const compressionModeInput = document.getElementById('compressionMode');
         const backendInput = document.getElementById('backend');
         const compressBtn = document.getElementById('compressBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
         const settingsCard = document.getElementById('settingsCard');
         const progressCard = document.getElementById('progressCard');
         const progressFill = document.getElementById('progressFill');
@@ -236,8 +243,27 @@
         fileInput.addEventListener('change', handleFileSelect);
         removeBtn.addEventListener('click', removeFile);
         compressBtn.addEventListener('click', startCompress);
+        cancelBtn.addEventListener('click', cancelCompress);
         downloadBtn.addEventListener('click', downloadFile);
         newTaskBtn.addEventListener('click', resetApp);
+
+        // Wire WebSocket callbacks for real-time progress
+        if (window.wsManager) {
+            window.wsManager.on('progress', (data) => {
+                wsProgressReceived = true;
+                progressFill.style.width = `${data.progress}%`;
+                progressPercent.textContent = `${data.progress}%`;
+                progressMessage.textContent = data.message;
+            });
+            window.wsManager.on('completed', (result) => {
+                stopPolling();
+                showResult(result);
+            });
+            window.wsManager.on('failed', (message) => {
+                stopPolling();
+                showError(message);
+            });
+        }
 
         uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
         uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
@@ -282,6 +308,27 @@
             currentTaskId = null;
         }
 
+        function stopPolling() {
+            if (statusCheckInterval) { clearInterval(statusCheckInterval); statusCheckInterval = null; }
+        }
+
+        async function cancelCompress() {
+            if (!currentTaskId) return;
+            try { await fetch(`/api/cancel/${currentTaskId}`, { method: 'POST' }); } catch(e) {}
+            stopPolling();
+            resetToSettings('已取消');
+        }
+
+        function resetToSettings(message) {
+            settingsCard.classList.remove('hidden');
+            progressCard.classList.add('hidden');
+            resultCard.classList.add('hidden');
+            compressBtn.disabled = false;
+            if (currentTaskId && window.wsManager) window.wsManager.leaveTask(currentTaskId);
+            currentTaskId = null;
+            if (message) progressMessage.textContent = message;
+        }
+
         async function startCompress() {
             if (!currentTaskId) return;
             settingsCard.classList.add('hidden');
@@ -291,6 +338,11 @@
             progressFill.style.width = '0%';
             progressPercent.textContent = '0%';
             progressMessage.textContent = '开始压缩...';
+            wsProgressReceived = false;
+            pollFailCount = 0;
+            pollStartTime = Date.now();
+            // Join WebSocket task room for real-time updates
+            if (window.wsManager) window.wsManager.joinTask(currentTaskId);
             try {
                 const payload = {
                     task_id: currentTaskId,
@@ -307,7 +359,8 @@
                 });
                 const data = await response.json();
                 if (response.ok) {
-                    statusCheckInterval = setInterval(checkStatus, 500);
+                    // Polling as fallback — slower interval if WebSocket is active
+                    statusCheckInterval = setInterval(checkStatus, wsProgressReceived ? 2000 : 500);
                 } else {
                     showError(data.error || '启动压缩失败');
                 }
@@ -318,21 +371,36 @@
 
         async function checkStatus() {
             if (!currentTaskId) return;
+            // Timeout protection
+            if (pollStartTime && Date.now() - pollStartTime > MAX_POLL_MINUTES * 60 * 1000) {
+                stopPolling();
+                showError('任务超时，请刷新页面重试');
+                return;
+            }
             try {
                 const response = await fetch(`/api/status/${currentTaskId}`);
                 const data = await response.json();
-                progressFill.style.width = `${data.progress}%`;
-                progressPercent.textContent = `${data.progress}%`;
-                progressMessage.textContent = data.message;
+                pollFailCount = 0;
+                // Only update UI via polling if WebSocket hasn't delivered progress
+                if (!wsProgressReceived) {
+                    progressFill.style.width = `${data.progress}%`;
+                    progressPercent.textContent = `${data.progress}%`;
+                    progressMessage.textContent = data.message;
+                }
                 if (data.status === 'completed') {
-                    clearInterval(statusCheckInterval);
+                    stopPolling();
                     showResult(data.result);
                 } else if (data.status === 'failed') {
-                    clearInterval(statusCheckInterval);
+                    stopPolling();
                     showError(data.result?.message || '压缩失败');
                 }
             } catch (error) {
+                pollFailCount++;
                 console.error('状态检查失败:', error);
+                if (pollFailCount >= MAX_POLL_FAILS) {
+                    stopPolling();
+                    showError('网络连接失败，请检查网络后刷新页面');
+                }
             }
         }
 
@@ -376,10 +444,14 @@
 
         async function resetApp() {
             if (currentTaskId) {
+                if (window.wsManager) window.wsManager.leaveTask(currentTaskId);
                 try { await fetch(`/api/cleanup/${currentTaskId}`, { method: 'DELETE' }); } catch (error) { console.error('清理失败:', error); }
             }
             currentTaskId = null;
-            clearInterval(statusCheckInterval);
+            stopPolling();
+            wsProgressReceived = false;
+            pollFailCount = 0;
+            pollStartTime = null;
             fileInput.value = '';
             fileInfo.classList.add('hidden');
             settingsCard.classList.remove('hidden');

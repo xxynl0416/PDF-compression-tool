@@ -114,7 +114,6 @@ PDFTool/
 │   ├── core/
 │   │   ├── compressor.py   # Compression engine
 │   │   ├── analyzer.py     # PDF analysis
-│   │   ├── image_processor.py  # Image compression
 │   │   └── splitter.py     # File splitting
 │   ├── database/
 │   │   └── task_db.py      # SQLite task persistence

@@ -1,9 +1,12 @@
 """PDF分析器模块"""
+import logging
 from dataclasses import dataclass
 from typing import List, Optional
 import fitz  # PyMuPDF
 
 from ..utils.file_utils import get_file_size_mb, get_file_size_bytes
+
+logger = logging.getLogger("analyzer")
 
 
 @dataclass
@@ -89,14 +92,16 @@ class PDFAnalyzer:
                 try:
                     text = page.get_text("text")
                     text_length = len(text)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"页面 {page_num} 文本提取失败: {e}")
                     text_length = 0
                 total_text_length += text_length
 
                 try:
                     image_list = page.get_images(full=False)
                     image_count = len(image_list)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"页面 {page_num} 图像列表获取失败: {e}")
                     image_count = 0
                 total_image_count += image_count
 
@@ -153,8 +158,8 @@ class PDFAnalyzer:
                         xref=xref,
                         size_bytes=len(base_image["image"])
                     ))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"页面 {page_num} 图像 xref={xref} 提取失败: {e}")
 
         return images
 

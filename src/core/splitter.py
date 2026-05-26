@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple
 import fitz  # PyMuPDF
 
 from .analyzer import PDFAnalyzer
-from ..utils.config import get_config
 from ..utils.file_utils import (
     get_file_size_mb,
     generate_segment_path,
@@ -17,10 +16,11 @@ from ..utils.logger import setup_logger
 class PDFSplitter:
     """PDF分段器 - 精确控制每段大小"""
 
-    def __init__(self, max_size_mb: Optional[float] = None, size_tolerance: float = 0.05):
-        self.config = get_config()
-        self.max_size_mb = max_size_mb or self.config.split_max_size_mb
-        self.size_tolerance = size_tolerance  # 目标大小容差
+    def __init__(self, max_size_mb: float = 200, size_tolerance: float = 0.05,
+                 segment_suffix: str = "_part"):
+        self.max_size_mb = max_size_mb
+        self.size_tolerance = size_tolerance
+        self.segment_suffix = segment_suffix
         self.target_min = self.max_size_mb * (1 - size_tolerance)
         self.target_max = self.max_size_mb
         self.analyzer = PDFAnalyzer()
@@ -219,9 +219,9 @@ class PDFSplitter:
     def _get_output_path(self, input_path: str, output_base_path: Optional[str], segment_num: int) -> str:
         """生成输出路径"""
         if output_base_path:
-            return generate_segment_path(output_base_path, segment_num, self.config.segment_suffix)
+            return generate_segment_path(output_base_path, segment_num, self.segment_suffix)
         else:
-            return generate_segment_path(input_path, segment_num, self.config.segment_suffix)
+            return generate_segment_path(input_path, segment_num, self.segment_suffix)
 
     def split_by_pages(
         self,

@@ -1,8 +1,11 @@
 """配置管理模块"""
 import copy
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger("config")
 
 DEFAULT_CONFIG = {
     'compression': {
@@ -53,7 +56,8 @@ class Config:
             if loaded_config:
                 self._deep_update(self._config, loaded_config)
             return True
-        except Exception:
+        except Exception as e:
+            logger.warning(f"加载配置文件失败 {config_path}: {e}")
             return False
 
     def _deep_update(self, base: dict, update: dict):
